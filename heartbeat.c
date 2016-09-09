@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <syslog.h>
+#include <time.h>
 
 static void heartbeat_daemon()
 {
@@ -30,8 +31,7 @@ static void heartbeat_daemon()
     if (setsid() < 0)
         exit(1);
 
-    /* Catch, ignore and handle signals */
-    //TODO: Implement a working signal handler */
+    /* Catch, ignore/handle signals */
     signal(SIGCHLD, SIG_IGN);
     signal(SIGHUP, SIG_IGN);
 
@@ -49,10 +49,6 @@ static void heartbeat_daemon()
     /* Set new file permissions */
     umask(0);
 
-    /* Change the working directory to the root directory */
-    /* or another appropriated directory */
-    chdir("/");
-
     /* Close all open file descriptors */
     int x;
     for (x = sysconf(_SC_OPEN_MAX); x>0; x--)
@@ -60,23 +56,31 @@ static void heartbeat_daemon()
         close (x);
     }
 
-    /* Open the log file */
-    openlog ("heartbeat", LOG_PID, LOG_DAEMON);
 }
 
 int main()
 {
     heartbeat_daemon();
 
-    syslog (LOG_NOTICE, "heartbeat started");
-    while (1)
-    {
-        syslog (LOG_NOTICE, "process pulse");
-        sleep(60);
+    /* Custom log file, a+ => create + append */
+    FILE *pulseox;
+    pulseox = fopen("/var/vcap/sys/log/sawmill/heartbeat.log", "a+");
+    if (!pulseox) {
+      fprintf(stdout, "Could not open log file for heartbeat daemon.\n" );
+      error("Cannot open log file /var/vcap/sys/log/sawmill/heartbeat.log");
     }
 
-    syslog (LOG_NOTICE, "heartbeat terminated");
-    closelog();
+    fprintf(pulseox, "heartbeat started\n");
+    while (1) {
+      /* getting current calendar time */
+      time_t ltime;
+      ltime=time(NULL);
 
+      /* write to the log, flush the buffer, take a quick nap */
+      fprintf(pulseox, "%s --- sawmill --- process pulse\n", asctime(localtime(&ltime)));
+      fflush(pulseox);
+      sleep(60);
+    }
+    fclose(pulseox);
     return EXIT_SUCCESS;
 }
